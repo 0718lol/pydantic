@@ -45,6 +45,7 @@ impl_py_gc_traverse!(PrebuiltSerializer { schema_serializer });
 
 impl TypeSerializer for PrebuiltSerializer {
     fn to_python<'py>(&self, value: &Bound<'py, PyAny>, state: &mut SerializationState<'py>) -> PyResult<Py<PyAny>> {
+        let state = &mut state.scoped_set(|s| &mut s.config, self.schema_serializer.get().config);
         self.schema_serializer.get().serializer.to_python_no_infer(value, state)
     }
 
@@ -53,6 +54,7 @@ impl TypeSerializer for PrebuiltSerializer {
         key: &'a Bound<'py, PyAny>,
         state: &mut SerializationState<'py>,
     ) -> PyResult<Cow<'a, str>> {
+        let state = &mut state.scoped_set(|s| &mut s.config, self.schema_serializer.get().config);
         self.schema_serializer.get().serializer.json_key_no_infer(key, state)
     }
 
@@ -62,6 +64,7 @@ impl TypeSerializer for PrebuiltSerializer {
         serializer: S,
         state: &mut SerializationState<'py>,
     ) -> Result<S::Ok, S::Error> {
+        let state = &mut state.scoped_set(|s| &mut s.config, self.schema_serializer.get().config);
         self.schema_serializer
             .get()
             .serializer

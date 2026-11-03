@@ -1511,3 +1511,54 @@ def test_model_serializer_when_used_fallback_respects_include_exclude() -> None:
         assert m.model_dump(exclude={'b'}) == {'a': 1}
         assert m.model_dump(include={'a'}) == {'a': 1}
         assert m.model_dump(mode='json', exclude={'b'}) == {'ser': True}
+
+
+@pytest.mark.parametrize('serializer_kind', ['plain', 'wrap'])
+@pytest.mark.parametrize('mode', ['null', 'constants', 'strings'])
+@pytest.mark.parametrize(
+    'value, token',
+    [(float('nan'), 'NaN'), (float('inf'), 'Infinity'), (float('-inf'), '-Infinity'), (1.5, '1.5')],
+)
+def test_prebuilt_serializer_inf_nan_config(serializer_kind, mode, value, token):
+    """https://github.com/pydantic/pydantic/issues/10891"""
+    if serializer_kind == 'plain':
+        serializer = PlainSerializer(lambda value: value, return_type=Any)
+    else:
+        serializer = WrapSerializer(lambda value, handler: handler(value), return_type=Any)
+
+    class Model(BaseModel):
+        model_config = ConfigDict(ser_json_inf_nan=mode)
+        value: Annotated[float, serializer]
+
+    model = Model(value=value)
+    if token != '1.5':
+        token = 'null' if mode == 'null' else json.dumps(token) if mode == 'strings' else token
+    expected = '{"value":' + token + '}'
+
+    assert model.model_dump_json() == expected
+    assert TypeAdapter(list[Any]).dump_json([model]) == ('[' + expected + ']').encode()
+
+    adapter = TypeAdapter(list[Model])
+    assert adapter.dump_json([model]) == ('[' + expected + ']').encode()
+    assert json.dumps(adapter.dump_python([model], mode='json'), separators=(',', ':')) == '[' + expected + ']'
+
+
+@pytest.mark.parametrize('outer_mode, expected_tail', [('null', 'null'), ('constants', 'NaN'), ('strings', '"NaN"')])
+def test_prebuilt_serializer_config_is_scoped(outer_mode, expected_tail):
+    """https://github.com/pydantic/pydantic/issues/10891"""
+
+    class ConstantsModel(BaseModel):
+        model_config = ConfigDict(ser_json_inf_nan='constants')
+        value: Any
+
+    class StringsModel(BaseModel):
+        model_config = ConfigDict(ser_json_inf_nan='strings')
+        value: Any
+
+    adapter = TypeAdapter(tuple[ConstantsModel, StringsModel, Any], config=ConfigDict(ser_json_inf_nan=outer_mode))
+    values = (ConstantsModel(value=float('nan')), StringsModel(value=float('inf')), float('nan'))
+    expected = '[{"value":NaN},{"value":"Infinity"},' + expected_tail + ']'
+
+    assert adapter.dump_json(values) == expected.encode()
+    assert json.dumps(adapter.dump_python(values, mode='json'), separators=(',', ':')) == expected
+
