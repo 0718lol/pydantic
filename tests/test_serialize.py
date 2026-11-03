@@ -1561,4 +1561,3 @@ def test_prebuilt_serializer_config_is_scoped(outer_mode, expected_tail):
 
     assert adapter.dump_json(values) == expected.encode()
     assert json.dumps(adapter.dump_python(values, mode='json'), separators=(',', ':')) == expected
-
